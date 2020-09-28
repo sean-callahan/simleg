@@ -169,13 +169,13 @@ func (cpu *CPU) branch(as Instruction) bool {
 		if to.Label != "" {
 			return cpu.labels[to.Label]
 		}
-		return cpu.Registers[to.Reg]
+		return cpu.PC + to.Offset
 	}
 	switch {
 	case as.Op == "B":
-		cpu.PC = as.To.Offset
-	case as.Op == "BR":
 		cpu.PC = addr(as.To)
+	case as.Op == "BR":
+		cpu.PC = cpu.Registers[as.To.Reg]
 		return true
 	case as.Op == "BL":
 		cpu.Registers[LR] = uint64(cpu.PC)

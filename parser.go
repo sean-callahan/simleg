@@ -110,7 +110,7 @@ func rformatParser(p *Parser, as *Instruction) (err error) {
 
 func dformatString(w io.Writer, as Instruction) {
 	fmt.Fprintf(w, "%s,", as.To.Reg)
-	addrString(w, as.From)
+	offsetString(w, as.From)
 }
 
 func dformatParser(p *Parser, as *Instruction) (err error) {
@@ -121,7 +121,7 @@ func dformatParser(p *Parser, as *Instruction) (err error) {
 	if _, err = p.expect(itemComma); err != nil {
 		return err
 	}
-	as.From, err = p.expectAddr(as)
+	as.From, err = p.expectOffset(as)
 	if err != nil {
 		return fmt.Errorf("from: %v", err)
 	}
@@ -155,11 +155,22 @@ func iformatParser(p *Parser, as *Instruction) (err error) {
 }
 
 func bformatString(w io.Writer, as Instruction) {
-	fmt.Fprint(w, as.To.Label)
+	if as.To.Label != "" {
+		fmt.Fprint(w, as.To.Label)
+		return
+	}
+	fmt.Fprint(w, as.To.Offset)
 }
 
 func bformatParser(p *Parser, as *Instruction) (err error) {
-	as.To.Label, err = p.expect(itemName)
+	if as.Op == "BR" {
+		as.To.Reg, err = p.expectRegister(as.registerPrefix())
+		if err != nil {
+			return fmt.Errorf("to: %v", err)
+		}
+		return nil
+	}
+	as.To, err = p.expectAddr(as)
 	if err != nil {
 		return fmt.Errorf("to: %v", err)
 	}
@@ -219,11 +230,11 @@ func (p *Parser) expectImmediate(bitsize int) (uint64, error) {
 	return n, nil
 }
 
-func addrString(w io.Writer, addr Addr) {
+func offsetString(w io.Writer, addr Addr) {
 	fmt.Fprintf(w, "[%s,#%d]", addr.Reg, addr.Offset)
 }
 
-func (p *Parser) expectAddr(as *Instruction) (addr Addr, err error) {
+func (p *Parser) expectOffset(as *Instruction) (addr Addr, err error) {
 	if _, err := p.expect(itemLbrack); err != nil {
 		return addr, err
 	}
@@ -240,6 +251,26 @@ func (p *Parser) expectAddr(as *Instruction) (addr Addr, err error) {
 	}
 	if _, err := p.expect(itemRbrack); err != nil {
 		return addr, err
+	}
+	return addr, nil
+}
+
+func (p *Parser) expectAddr(as *Instruction) (addr Addr, err error) {
+	if p.has(itemInteger) {
+		// PC-relative address
+		off, err := p.expect(itemInteger)
+		if err != nil {
+			return addr, fmt.Errorf("to: %v", err)
+		}
+		addr.Offset, err = strconv.ParseUint(off, 10, 64)
+		if err != nil {
+			return addr, fmt.Errorf("to: %v", err)
+		}
+		return addr, nil
+	}
+	addr.Label, err = p.expect(itemName)
+	if err != nil {
+		return addr, fmt.Errorf("to: %v", err)
 	}
 	return addr, nil
 }
